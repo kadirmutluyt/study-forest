@@ -3,9 +3,10 @@ import { Stack, router } from 'expo-router';
 import { useFonts, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
-import { useAuth } from '../src/features/auth/use-auth';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { COLORS } from '../src/constants/theme';
+import { useAuth } from '../src/features/auth/use-auth';
+import { ModernToast } from '../src/components/ui/ModernToast';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -33,12 +34,13 @@ export default function RootLayout() {
   if (!fontsLoaded || loading) return null;
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="dark" />
+      <ModernToast />
       <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }

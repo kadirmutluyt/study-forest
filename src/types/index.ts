@@ -16,6 +16,8 @@ export interface Tree {
   is_completed: boolean;
   planted_at: string;
   completed_at: string | null;
+  position_x?: number | null;
+  position_y?: number | null;
 }
 
 export interface StudySession {

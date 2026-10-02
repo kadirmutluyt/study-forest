@@ -5,15 +5,20 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/features/auth/use-auth';
 import { Button } from '../../src/components/ui/Button';
+import { GoogleButton } from '../../src/components/ui/GoogleButton';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../src/constants/theme';
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
+  const { signIn, signInWithGoogle, signInAnonymously } = useAuth();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -30,13 +35,56 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    try {
+      setGoogleLoading(true);
+      const res = await signInWithGoogle();
+      setGoogleLoading(false);
+      if (res?.error) {
+        Alert.alert(
+          'Google ile Giriş Hatası',
+          res.error.message || 'Google ile giriş tamamlanamadı. Supabase üzerinde Google Provider ayarlarını kontrol ediniz.'
+        );
+      }
+    } catch (err: any) {
+      setGoogleLoading(false);
+      Alert.alert('Hata', err.message || 'Beklenmeyen bir hata oluştu.');
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      setGuestLoading(true);
+      const { error } = await signInAnonymously();
+      setGuestLoading(false);
+      if (error) {
+        Alert.alert(
+          'Misafir Girişi',
+          error.message || 'Misafir girişi için Supabase panelinde Anonymous Sign-in özelliğini aktifleştirin.'
+        );
+      }
+    } catch (err: any) {
+      setGuestLoading(false);
+      Alert.alert('Hata', err.message || 'Giriş yapılamadı.');
+    }
+  };
+
   return (
     <LinearGradient colors={[COLORS.background, '#D8F3DC']} style={styles.gradient}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            {
+              paddingTop: Math.max(insets.top, 20) + SPACING.md,
+              paddingBottom: Math.max(insets.bottom, 20) + SPACING.lg,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.logo}>🌳</Text>
@@ -47,6 +95,33 @@ export default function LoginScreen() {
           {/* Form */}
           <View style={styles.form}>
             <Text style={styles.formTitle}>Giriş Yap</Text>
+
+            {/* Kolay / Hızlı Giriş Seçenekleri */}
+            <GoogleButton
+              onPress={handleGoogleLogin}
+              loading={googleLoading}
+              title="Google ile Devam Et"
+              style={styles.googleBtn}
+            />
+
+            <TouchableOpacity
+              style={styles.guestBtn}
+              onPress={handleGuestLogin}
+              disabled={guestLoading || googleLoading || loading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.guestBtnEmoji}>⚡</Text>
+              <Text style={styles.guestBtnText}>
+                {guestLoading ? 'Giriş yapılıyor...' : 'Hızlı Giriş (Misafir Modu)'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Ayrım Çizgisi */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>veya e-posta ile</Text>
+              <View style={styles.dividerLine} />
+            </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>E-posta</Text>
@@ -101,7 +176,7 @@ const styles = StyleSheet.create({
   gradient: { flex: 1 },
   container: { flex: 1 },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: SPACING.lg },
-  header: { alignItems: 'center', marginBottom: SPACING.xxl },
+  header: { alignItems: 'center', marginBottom: SPACING.xl },
   logo: { fontSize: 72, marginBottom: SPACING.sm },
   appName: {
     fontFamily: FONTS.heading,
@@ -128,7 +203,46 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.heading,
     fontSize: 22,
     color: COLORS.text.primary,
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  googleBtn: {
+    marginBottom: SPACING.sm + 2,
+  },
+  guestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: SPACING.sm + 4,
+    marginBottom: SPACING.md,
+  },
+  guestBtnEmoji: {
+    fontSize: 16,
+    marginRight: SPACING.xs + 2,
+  },
+  guestBtnText: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 14,
+    color: COLORS.primary,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: SPACING.sm + 2,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  dividerText: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: COLORS.text.muted,
+    marginHorizontal: SPACING.sm + 2,
   },
   inputGroup: { marginBottom: SPACING.md },
   label: {
@@ -147,7 +261,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.text.primary,
   },
-  button: { marginTop: SPACING.sm },
+  button: { marginTop: SPACING.xs },
   linkContainer: { alignItems: 'center', marginTop: SPACING.md },
   link: { fontFamily: FONTS.body, fontSize: 14, color: COLORS.text.secondary },
   linkBold: { fontFamily: FONTS.bodyBold, color: COLORS.primary },

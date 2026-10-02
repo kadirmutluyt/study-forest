@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/features/auth/use-auth';
 import { supabase } from '../../src/lib/supabase';
 import { fetchUnlockedAchievements } from '../../src/features/achievements/use-achievements';
@@ -28,6 +29,7 @@ function formatHours(seconds: number): string {
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
 export default function StatsScreen() {
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const [stats, setStats] = useState<Stats>({
     totalTrees: 0, totalXP: 0, streakDays: 0,
@@ -36,11 +38,6 @@ export default function StatsScreen() {
   });
   const [unlockedKeys, setUnlockedKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!session?.user.id) return;
-    loadAll(session.user.id);
-  }, [session?.user.id]);
 
   const loadAll = async (userId: string) => {
     setLoading(true);
@@ -58,10 +55,18 @@ export default function StatsScreen() {
 
       const now = new Date();
       const weeklySeconds = [0, 0, 0, 0, 0, 0, 0];
+      const startOfWeek = new Date(now);
+      const dayOfWeek = (now.getDay() + 6) % 7;
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      startOfWeek.setHours(0, 0, 0, 0);
+
       sessions.forEach((s) => {
+        if (!s.started_at) return;
         const d = new Date(s.started_at);
-        const diff = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-        if (diff < 7) weeklySeconds[6 - diff] += s.duration_seconds ?? 0;
+        if (d >= startOfWeek) {
+          const idx = (d.getDay() + 6) % 7;
+          weeklySeconds[idx] += s.duration_seconds ?? 0;
+        }
       });
 
       setStats({
@@ -73,60 +78,79 @@ export default function StatsScreen() {
         totalPomodoros,
         weeklySeconds,
       });
+
       setUnlockedKeys(achievementsRes);
+    } catch (err) {
+      console.warn('Stats yüklenirken hata:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const maxWeekly = Math.max(...stats.weeklySeconds, 1);
+  useEffect(() => {
+    if (!session?.user.id) return;
+    loadAll(session.user.id);
+  }, [session?.user.id]);
 
-  const statCards = [
-    { emoji: '🌳', label: 'Tamamlanan Ağaç', value: stats.totalTrees.toString() },
-    { emoji: '⚡', label: 'Toplam XP', value: stats.totalXP.toLocaleString('tr-TR') },
-    { emoji: '🔥', label: 'Gün Serisi', value: `${stats.streakDays} gün` },
-    { emoji: '🍅', label: 'Pomodoro', value: stats.totalPomodoros.toString() },
-    { emoji: '⏱️', label: 'Toplam Çalışma', value: formatHours(stats.totalSeconds) },
-    { emoji: '📅', label: 'Toplam Seans', value: stats.totalSessions.toString() },
-  ];
-
+  const maxWeekly = Math.max(...stats.weeklySeconds, 3600);
+  const todayIdx = (new Date().getDay() + 6) % 7;
   const unlockedCount = unlockedKeys.length;
   const totalCount = ACHIEVEMENTS.length;
 
+  const statCards = [
+    { emoji: '🌳', value: `${stats.totalTrees}`, label: 'Tamamlanan Ağaç' },
+    { emoji: '⚡', value: `${stats.totalXP}`, label: 'Toplam XP' },
+    { emoji: '🔥', value: `${stats.streakDays} gün`, label: 'Seri (Streak)' },
+    { emoji: '⏱️', value: formatHours(stats.totalSeconds), label: 'Toplam Odaklanma' },
+    { emoji: '🍅', value: `${stats.totalPomodoros}`, label: 'Pomodoro' },
+    { emoji: '🎯', value: `${stats.totalSessions}`, label: 'Toplam Seans' },
+  ];
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={[COLORS.background, '#D8F3DC']} style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>İstatistiklerim</Text>
+    <View style={styles.container}>
+      <LinearGradient colors={[COLORS.background, '#D8F3DC']} style={styles.gradient}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            {
+              paddingTop: Math.max(insets.top, 16) + SPACING.xs,
+              paddingBottom: Math.max(insets.bottom, 20) + SPACING.xl,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>İstatistikler</Text>
 
           {loading ? (
-            <Text style={styles.loading}>Yükleniyor...</Text>
+            <Text style={styles.loading}>Veriler yükleniyor...</Text>
           ) : (
             <>
               {/* Haftalık grafik */}
               <Card elevated style={styles.chartCard}>
-                <Text style={styles.chartTitle}>📅 Haftalık Çalışma</Text>
+                <Text style={styles.chartTitle}>📅 Bu Haftanın Odaklanması</Text>
                 <View style={styles.chart}>
-                  {stats.weeklySeconds.map((seconds, i) => {
-                    const heightPercent = seconds / maxWeekly;
-                    const isToday = i === 6;
+                  {DAYS.map((day, i) => {
+                    const secs = stats.weeklySeconds[i];
+                    const heightPercent = maxWeekly > 0 ? (secs / maxWeekly) * 100 : 0;
+                    const isToday = i === todayIdx;
                     return (
-                      <View key={i} style={styles.barContainer}>
+                      <View key={day} style={styles.barContainer}>
                         <Text style={styles.barValue}>
-                          {seconds >= 3600 ? `${Math.floor(seconds / 3600)}sa`
-                            : seconds >= 60 ? `${Math.floor(seconds / 60)}dk` : ''}
+                          {secs > 0 ? `${Math.round(secs / 60)}d` : ''}
                         </Text>
                         <View style={styles.barTrack}>
-                          <View style={[
-                            styles.bar,
-                            {
-                              height: `${Math.max(heightPercent * 100, seconds > 0 ? 5 : 0)}%`,
-                              backgroundColor: isToday ? COLORS.primary : COLORS.secondary,
-                            },
-                          ]} />
+                          <View
+                            style={[
+                              styles.bar,
+                              {
+                                height: `${Math.max(4, heightPercent)}%`,
+                                backgroundColor: isToday ? COLORS.primary : COLORS.secondary,
+                              },
+                            ]}
+                          />
                         </View>
                         <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>
-                          {DAYS[i]}
+                          {day}
                         </Text>
                       </View>
                     );
@@ -134,7 +158,7 @@ export default function StatsScreen() {
                 </View>
               </Card>
 
-              {/* Stat grid */}
+              {/* İstatistik kartları grid */}
               <View style={styles.grid}>
                 {statCards.map((card) => (
                   <Card key={card.label} style={styles.statCard}>
@@ -196,16 +220,21 @@ export default function StatsScreen() {
           )}
         </ScrollView>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.background },
-  container: { flex: 1 },
-  scroll: { padding: SPACING.lg },
-  title: { fontFamily: FONTS.heading, fontSize: 26, color: COLORS.text.primary, marginBottom: SPACING.lg },
-  loading: { fontFamily: FONTS.body, color: COLORS.text.secondary, textAlign: 'center' },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  gradient: { flex: 1 },
+  scroll: { paddingHorizontal: SPACING.lg },
+  title: {
+    fontFamily: FONTS.heading,
+    fontSize: 26,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.md,
+  },
+  loading: { fontFamily: FONTS.body, color: COLORS.text.secondary, textAlign: 'center', marginTop: SPACING.xl },
   chartCard: { marginBottom: SPACING.md },
   chartTitle: { fontFamily: FONTS.bodyBold, fontSize: 15, color: COLORS.text.primary, marginBottom: SPACING.md },
   chart: { flexDirection: 'row', alignItems: 'flex-end', height: 120, gap: SPACING.xs },
@@ -216,7 +245,7 @@ const styles = StyleSheet.create({
   barLabel: { fontFamily: FONTS.body, fontSize: 10, color: COLORS.text.muted, marginTop: 4 },
   barLabelToday: { fontFamily: FONTS.bodyBold, color: COLORS.primary },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
-  statCard: { width: '47%', alignItems: 'center', paddingVertical: SPACING.md, gap: 4 },
+  statCard: { width: '48%', alignItems: 'center', paddingVertical: SPACING.md, gap: 4 },
   statEmoji: { fontSize: 28 },
   statValue: { fontFamily: FONTS.heading, fontSize: 20, color: COLORS.text.primary },
   statLabel: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.text.secondary, textAlign: 'center' },
@@ -228,7 +257,7 @@ const styles = StyleSheet.create({
   achievementFill: { height: '100%', backgroundColor: COLORS.accent, borderRadius: RADIUS.full },
   achievementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   badge: {
-    width: '30%', alignItems: 'center', backgroundColor: COLORS.background,
+    width: '30.5%', alignItems: 'center', backgroundColor: COLORS.background,
     borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 1, borderColor: COLORS.border,
     gap: 3,
   },

@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { COLORS, FONTS } from '../../constants/theme';
+import { COLORS } from '../../constants/theme';
 
 interface TimerRingProps {
   progress: number; // 0 to 1
